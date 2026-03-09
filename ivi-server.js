@@ -1,16 +1,16 @@
 // ============================================================
-//  IVI – Servidor Webhook para integração Wizo + Gemini API
+//  IVI – Servidor Webhook para integração Wizo + Groq API
 //  Ville Capital | Agente de Atendimento a Assessores
 // ============================================================
 // Variáveis de ambiente:
-//   GEMINI_API_KEY = chave Google Gemini (grátis em aistudio.google.com)
+//   GROQ_API_KEY = chave Groq (grátis em console.groq.com)
 // ============================================================
 
 const express = require('express');
 const app = express();
 app.use(express.json());
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const PORT = process.env.PORT || 3000;
 
 const IVI_SYSTEM_PROMPT = `Você é a IVI (Inteligência Virtual de Atendimento) da Ville Capital.
@@ -34,7 +34,7 @@ REGRAS:
 const conversations = {};
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'gemini-2.0-flash', apiKey: GEMINI_API_KEY ? 'SIM' : 'NÃO' });
+  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'llama-3.3-70b-versatile', apiKey: GROQ_API_KEY ? 'SIM' : 'NÃO' });
 });
 
 app.post('/webhook/ivi', async (req, res) => {
@@ -45,33 +45,38 @@ app.post('/webhook/ivi', async (req, res) => {
 
     if (!conversations[safeContactId]) conversations[safeContactId] = [];
 
-    conversations[safeContactId].push({ role: 'user', parts: [{ text: userMessage }] });
+    conversations[safeContactId].push({ role: 'user', content: userMessage });
 
     if (conversations[safeContactId].length > 20) {
       conversations[safeContactId] = conversations[safeContactId].slice(-20);
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const response = await fetch(geminiUrl, {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: IVI_SYSTEM_PROMPT }] },
-        contents: conversations[safeContactId],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: IVI_SYSTEM_PROMPT },
+          ...conversations[safeContactId]
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
       })
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('Erro Gemini:', JSON.stringify(data));
+      console.error('Erro Groq:', JSON.stringify(data));
       return res.status(500).json({ reply: 'Problema técnico. Tente novamente.', action: 'none' });
     }
 
-    const assistantText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Não consegui processar.';
-    conversations[safeContactId].push({ role: 'model', parts: [{ text: assistantText }] });
+    const assistantText = data.choices?.[0]?.message?.content || 'Não consegui processar.';
+    conversations[safeContactId].push({ role: 'assistant', content: assistantText });
 
     const shouldTransfer = assistantText.includes('##TRANSFERIR_HUMANO##');
     const cleanReply = assistantText.replace('##TRANSFERIR_HUMANO##', '').trim();
@@ -88,5 +93,5 @@ app.post('/webhook/ivi', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✅ IVI Server rodando na porta ${PORT}`);
-  console.log(`🔑 Gemini API Key: ${GEMINI_API_KEY ? 'SIM' : 'NÃO CONFIGURADA'}`);
+  console.log(`🔑 Groq API Key: ${GROQ_API_KEY ? 'SIM' : 'NÃO CONFIGURADA'}`);
 });
