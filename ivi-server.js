@@ -1,180 +1,92 @@
 // ============================================================
-//  IVI – Servidor Webhook para integração Wizo + Claude API
+//  IVI – Servidor Webhook para integração Wizo + Gemini API
 //  Ville Capital | Agente de Atendimento a Assessores
 // ============================================================
-// DEPLOY GRATUITO RECOMENDADO: https://railway.app
-// Variáveis de ambiente necessárias:
-//   ANTHROPIC_API_KEY = sua chave da API Anthropic
-//   PORT = 3000 (Railway define automaticamente)
+// Variáveis de ambiente:
+//   GEMINI_API_KEY = chave Google Gemini (grátis em aistudio.google.com)
 // ============================================================
 
 const express = require('express');
 const app = express();
 app.use(express.json());
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const PORT = process.env.PORT || 3000;
 
-// ── System Prompt da IVI ──────────────────────────────────
-const IVI_SYSTEM_PROMPT = `
-Você é a IVI (Inteligência Virtual de Atendimento) da Ville Capital.
+const IVI_SYSTEM_PROMPT = `Você é a IVI (Inteligência Virtual de Atendimento) da Ville Capital.
 Atende exclusivamente assessores de investimentos da Ville Capital.
 
-## IDENTIDADE
-- Nome: IVI
-- Empresa: Ville Capital
-- Tom: Cordial, profissional e resolutiva
-- Idioma: Português brasileiro
+IDENTIDADE: Nome IVI, tom cordial e profissional, português brasileiro.
 
-## FONTES DE CONHECIMENTO OFICIAIS
+CONHECIMENTO:
+- Manual do Assessor: https://gamma.app/docs/Manual-do-Assessor-de-Investimentos-Ville-Capital-btmllczo6e7wkeg?mode=doc
+- Docs PJ: Contrato Social, Cartão CNPJ, Comprovante de endereço, CPF/RG dos sócios
+- Link pasta PJ: https://agenteinvest-my.sharepoint.com/:f:/g/personal/ricardo_301178_agenteinvest_com_br/EuweN_yUBbVBhTCjc2kapXkBBitL8XVstkeCLHqgsYEQPA?e=WN1q6a
+- Fichas KYC/Suitability: https://agenteinvest-my.sharepoint.com/:f:/g/personal/ricardo_301178_agenteinvest_com_br/IgDsHjf8lAW1QYUwo3NpGqV5AQYrS_F1bLZHgix6oLGBEDw?e=lV1gNa
+- Menor de idade: responsável (RG/CNH+CPF) + menor (certidão ou RG/CPF). Responsável presente obrigatório.
+- Suporte: operacional@villecapital.com.br
 
-### 1. Manual do Assessor Ville Capital
-URL: https://gamma.app/docs/Manual-do-Assessor-de-Investimentos-Ville-Capital-btmllczo6e7wkeg?mode=doc
-Temas cobertos: Abertura de contas, Menor de idade, Acesso a sistemas, Processos internos
-REGRA: NUNCA diga "consulte o manual". Traga a resposta completa baseada nele.
+REGRAS:
+1. NUNCA diga "consulte o manual" - dê a resposta completa
+2. Finalize sempre com: "Posso te ajudar com mais alguma coisa? 😊"
+3. Para transferir para humano use exatamente: ##TRANSFERIR_HUMANO##`;
 
-### 2. Documentos para Abertura de PJ
-Pasta: https://agenteinvest-my.sharepoint.com/:f:/g/personal/ricardo_301178_agenteinvest_com_br/EuweN_yUBbVBhTCjc2kapXkBBitL8XVstkeCLHqgsYEQPA?e=WN1q6a
-Documentos padrão PJ: Contrato Social, Cartão CNPJ, Comprovante de endereço da empresa, CPF/RG dos sócios
-REGRA: Após listar os documentos, sempre finalizar com:
-"Clique aqui para ver o PDF completo com os documentos exigidos para esse tipo de empresa: [link da pasta acima]"
-
-### 3. Fichas e Formulários (KYC, Suitability)
-Pasta: https://agenteinvest-my.sharepoint.com/:f:/g/personal/ricardo_301178_agenteinvest_com_br/IgDsHjf8lAW1QYUwo3NpGqV5AQYrS_F1bLZHgix6oLGBEDw?e=lV1gNa
-REGRA: Envie o link direto ou mencione o arquivo quando solicitado.
-
-## CASOS ESPECIAIS
-
-### Abertura de Conta – Menor de Idade
-Documentos do RESPONSÁVEL LEGAL: RG ou CNH + CPF
-Documentos do MENOR: Certidão de Nascimento ou RG/CPF
-Regra obrigatória: O responsável legal DEVE estar presente na abertura.
-
-### Suporte Operacional (e-mail direto)
-E-mail: operacional@villecapital.com.br
-
-## REGRAS DE COMPORTAMENTO
-1. Sempre responda de forma COMPLETA — nunca aponte só para fontes
-2. NUNCA diga "consulte o manual" ou "acesse o link"
-3. Finalize TODA resposta com: "Posso te ajudar com mais alguma coisa? 😊"
-4. Se receber ÁUDIO: transcreva e interprete como texto normal
-5. Seja breve e direto quando a pergunta for simples
-
-## QUANDO TRANSFERIR PARA HUMANO
-Transfira IMEDIATAMENTE se:
-- O assessor pedir explicitamente ("falar com atendente", "humano", "pessoa real")
-- A pergunta não tiver resposta clara na base de conhecimento
-- O caso exigir validação manual ou exceção de processo
-
-### PROTOCOLO DE TRANSFERÊNCIA
-Quando for transferir, responda EXATAMENTE assim (sem alterar):
-"Tudo certo! Estou transferindo seu atendimento para um de nossos especialistas humanos. Em instantes, alguém do time Ville Suporte continuará com você com toda a atenção e cordialidade. 😊
-##TRANSFERIR_HUMANO##"
-
-A tag ##TRANSFERIR_HUMANO## ao final é obrigatória para acionar o sistema de transferência.
-`;
-
-// ── Armazenamento de histórico em memória ────────────────
-// Para produção: substitua por Redis ou banco de dados
 const conversations = {};
-const MAX_HISTORY = 20; // máximo de mensagens por conversa
 
-// ── Endpoint principal ────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'gemini-1.5-flash', apiKey: GEMINI_API_KEY ? 'SIM' : 'NÃO' });
+});
+
 app.post('/webhook/ivi', async (req, res) => {
   try {
-    const {
-      message,
-      contactId,
-      firstName = 'Assessor',
-      phoneNumber,
-      lastMessage
-    } = req.body;
-
+    const { message, lastMessage, contactId, firstName } = req.body;
     const userMessage = message || lastMessage || 'Olá';
-    const safeContactId = contactId || 'teste-wizo';
+    const safeContactId = contactId || 'teste';
 
-    // Inicializa histórico do contato
-    if (!conversations[safeContactId]) {
-      conversations[safeContactId] = [];
+    if (!conversations[safeContactId]) conversations[safeContactId] = [];
+
+    conversations[safeContactId].push({ role: 'user', parts: [{ text: userMessage }] });
+
+    if (conversations[safeContactId].length > 20) {
+      conversations[safeContactId] = conversations[safeContactId].slice(-20);
     }
 
-    // Adiciona mensagem do usuário ao histórico
-    conversations[safeContactId].push({
-      role: 'user',
-      content: `[Assessor: ${firstName}]\n${userMessage}`
-    });
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-    // Limita histórico para não exceder contexto
-    if (conversations[safeContactId].length > MAX_HISTORY) {
-      conversations[safeContactId] = conversations[safeContactId].slice(-MAX_HISTORY);
-    }
-
-    // ── Chama a API do Claude ─────────────────────────────
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(geminiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: IVI_SYSTEM_PROMPT,
-        messages: conversations[safeContactId]
+        system_instruction: { parts: [{ text: IVI_SYSTEM_PROMPT }] },
+        contents: conversations[safeContactId],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
       })
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const err = await response.text();
-      console.error('Erro na API Claude:', err);
-      return res.status(500).json({ error: 'Erro ao contatar IA', details: err });
+      console.error('Erro Gemini:', JSON.stringify(data));
+      return res.status(500).json({ reply: 'Problema técnico. Tente novamente.', action: 'none' });
     }
 
-    const data = await response.json();
-    const fullReply = data.content[0].text;
+    const assistantText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Não consegui processar.';
+    conversations[safeContactId].push({ role: 'model', parts: [{ text: assistantText }] });
 
-    // ── Detecta se deve transferir ────────────────────────
-    const shouldTransfer = fullReply.includes('##TRANSFERIR_HUMANO##');
-    const cleanReply = fullReply.replace('##TRANSFERIR_HUMANO##', '').trim();
+    const shouldTransfer = assistantText.includes('##TRANSFERIR_HUMANO##');
+    const cleanReply = assistantText.replace('##TRANSFERIR_HUMANO##', '').trim();
 
-    // Salva resposta no histórico
-    conversations[safeContactId].push({
-      role: 'assistant',
-      content: cleanReply
-    });
+    console.log(`[OK] ${safeContactId}: ${userMessage.substring(0, 50)}`);
 
-    // ── Retorno para o Wizo ───────────────────────────────
-    return res.json({
-      reply: cleanReply,
-      action: shouldTransfer ? 'transfer' : 'respond',
-      contactId
-    });
+    res.json({ reply: cleanReply, action: shouldTransfer ? 'transfer' : 'none' });
 
   } catch (error) {
-    console.error('Erro no servidor IVI:', error);
-    return res.status(500).json({
-      error: 'Erro interno do servidor',
-      reply: 'Desculpe, tive um problema técnico. Por favor, tente novamente ou fale com nossa equipe em operacional@villecapital.com.br'
-    });
+    console.error('Erro:', error.message);
+    res.status(500).json({ reply: 'Problema técnico. Tente novamente.', action: 'none' });
   }
 });
 
-// ── Limpa históricos antigos a cada 2 horas ───────────────
-setInterval(() => {
-  const keys = Object.keys(conversations);
-  if (keys.length > 500) {
-    // Remove os 100 mais antigos
-    keys.slice(0, 100).forEach(k => delete conversations[k]);
-    console.log('Histórico limpo – conversas ativas:', Object.keys(conversations).length);
-  }
-}, 2 * 60 * 60 * 1000);
-
-// ── Healthcheck ───────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'IVI online ✅', version: '1.0.0' }));
-
 app.listen(PORT, () => {
-  console.log(`\n✅ IVI Server rodando na porta ${PORT}`);
-  console.log(`🔗 Endpoint: POST /webhook/ivi`);
-  console.log(`🔑 API Key configurada: ${ANTHROPIC_API_KEY ? 'SIM' : 'NÃO ❌'}\n`);
+  console.log(`✅ IVI Server rodando na porta ${PORT}`);
+  console.log(`🔑 Gemini API Key: ${GEMINI_API_KEY ? 'SIM' : 'NÃO CONFIGURADA'}`);
 });
