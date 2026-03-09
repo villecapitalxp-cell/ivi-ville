@@ -1,0 +1,19 @@
+{
+  "name": "ivi-ville-capital",
+  "version": "1.0.0",
+  "description": "IVI – Agente de Atendimento Ville Capital via Claude API",
+  "main": "ivi-server.js",
+  "scripts": {
+    "start": "node ivi-server.js",
+    "dev": "nodemon ivi-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
