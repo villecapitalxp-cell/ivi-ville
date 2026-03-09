@@ -90,26 +90,23 @@ app.post('/webhook/ivi', async (req, res) => {
       lastMessage
     } = req.body;
 
-    const userMessage = message || lastMessage;
-
-    if (!userMessage || !contactId) {
-      return res.status(400).json({ error: 'message e contactId são obrigatórios' });
-    }
+    const userMessage = message || lastMessage || 'Olá';
+    const safeContactId = contactId || 'teste-wizo';
 
     // Inicializa histórico do contato
-    if (!conversations[contactId]) {
-      conversations[contactId] = [];
+    if (!conversations[safeContactId]) {
+      conversations[safeContactId] = [];
     }
 
     // Adiciona mensagem do usuário ao histórico
-    conversations[contactId].push({
+    conversations[safeContactId].push({
       role: 'user',
       content: `[Assessor: ${firstName}]\n${userMessage}`
     });
 
     // Limita histórico para não exceder contexto
-    if (conversations[contactId].length > MAX_HISTORY) {
-      conversations[contactId] = conversations[contactId].slice(-MAX_HISTORY);
+    if (conversations[safeContactId].length > MAX_HISTORY) {
+      conversations[safeContactId] = conversations[safeContactId].slice(-MAX_HISTORY);
     }
 
     // ── Chama a API do Claude ─────────────────────────────
@@ -124,7 +121,7 @@ app.post('/webhook/ivi', async (req, res) => {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         system: IVI_SYSTEM_PROMPT,
-        messages: conversations[contactId]
+        messages: conversations[safeContactId]
       })
     });
 
@@ -142,7 +139,7 @@ app.post('/webhook/ivi', async (req, res) => {
     const cleanReply = fullReply.replace('##TRANSFERIR_HUMANO##', '').trim();
 
     // Salva resposta no histórico
-    conversations[contactId].push({
+    conversations[safeContactId].push({
       role: 'assistant',
       content: cleanReply
     });
