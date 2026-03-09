@@ -34,9 +34,10 @@ REGRAS:
 const conversations = {};
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'llama-3.3-70b-versatile', apiKey: GROQ_API_KEY ? 'SIM' : 'NÃO' });
+  res.json({ status: 'IVI online ✅', version: '3.0.0', model: 'llama-3.3-70b-versatile', apiKey: GROQ_API_KEY ? 'SIM' : 'NÃO' });
 });
 
+// Rota que retorna texto puro (para Wizo)
 app.post('/webhook/ivi', async (req, res) => {
   try {
     const { message, lastMessage, contactId, firstName } = req.body;
@@ -72,7 +73,9 @@ app.post('/webhook/ivi', async (req, res) => {
 
     if (!response.ok) {
       console.error('Erro Groq:', JSON.stringify(data));
-      return res.status(500).json({ reply: 'Problema técnico. Tente novamente.', action: 'none' });
+      // Retorna texto puro de erro
+      res.set('Content-Type', 'text/plain');
+      return res.status(500).send('Problema técnico. Tente novamente.');
     }
 
     const assistantText = data.choices?.[0]?.message?.content || 'Não consegui processar.';
@@ -83,11 +86,14 @@ app.post('/webhook/ivi', async (req, res) => {
 
     console.log(`[OK] ${safeContactId}: ${userMessage.substring(0, 50)}`);
 
-    res.json({ reply: cleanReply, action: shouldTransfer ? 'transfer' : 'none' });
+    // Retorna texto puro para o Wizo armazenar direto na variável
+    res.set('Content-Type', 'text/plain');
+    res.send(cleanReply);
 
   } catch (error) {
     console.error('Erro:', error.message);
-    res.status(500).json({ reply: 'Problema técnico. Tente novamente.', action: 'none' });
+    res.set('Content-Type', 'text/plain');
+    res.status(500).send('Problema técnico. Tente novamente.');
   }
 });
 
