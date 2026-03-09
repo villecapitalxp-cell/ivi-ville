@@ -34,7 +34,7 @@ REGRAS:
 const conversations = {};
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'gemini-1.5-flash', apiKey: GEMINI_API_KEY ? 'SIM' : 'NÃO' });
+  res.json({ status: 'IVI online ✅', version: '2.0.0', model: 'gemini-2.0-flash', apiKey: GEMINI_API_KEY ? 'SIM' : 'NÃO' });
 });
 
 app.post('/webhook/ivi', async (req, res) => {
@@ -51,7 +51,7 @@ app.post('/webhook/ivi', async (req, res) => {
       conversations[safeContactId] = conversations[safeContactId].slice(-20);
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(geminiUrl, {
       method: 'POST',
